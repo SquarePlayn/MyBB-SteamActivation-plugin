@@ -4,7 +4,7 @@ This MyBB plugin verifies/activates new forum users via Steam login.
 <b>How to install:</b> <ul>
 <li>Put the PHP file in your /inc/plugins/ folder</li>
 <li>Install and activate the plugin in your AdminCP</li>
-<li>Also make sure to adjust the settings.</li><ul>
+<li>Also make sure to adjust the settings.</li></ul>
 
 You NEED to provide the plugin with a bit of info in the first few settings, so do not skip this or you might get unexpected results
 
