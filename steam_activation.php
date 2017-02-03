@@ -970,7 +970,9 @@ function steam_activation_f_get_errortemplates() {
 function steam_activation_f_get_requestedpage() {
 	steam_activation_f_debug("Function: get_requestedpage()");
 
-	return "http".(isset($_SERVER['HTTPS']) ? 's' : '')."://".$_SERVER['HTTP_HOST'].steam_activation_f_get_strippeduri();
+	$requestedpage = "http".(isset($_SERVER['HTTPS']) || $_SERVER['SERVER_PORT'] == 443 ? 's' : '')."://".$_SERVER['HTTP_HOST'].steam_activation_f_get_strippeduri();
+	steam_activation_f_debug("Requested page: ".$requestedpage);
+	return $requestedpage;
 }
 
 //Strip the Steam Auth stuff off of the link
@@ -1057,7 +1059,9 @@ function steam_activation_f_get_logoutlink() {
 	steam_activation_f_debug("Function: get_logoutlink()");
 	global $mybb;
 
-	return $mybb->settings['bburl']."/member.php?action=logout&logoutkey=".$mybb->user['logoutkey'];
+	$logoutlink = $mybb->settings['bburl']."/member.php?action=logout&logoutkey=".$mybb->user['logoutkey'];
+	steam_activation_f_debug("Logout link: ".$logoutlink);
+	return $logoutlink;
 }
 
 //Get the login-with-steam image-button with the right link
@@ -1106,6 +1110,7 @@ function steam_activation_f_get_postlink() {
 
 	$link = $mybb->settings['bburl']."/newthread.php?fid=".$mybb->settings['steam_activation_introduction_forum']."&processed=1";
 
+	steam_activation_f_debug("Postlink: ".$link);
 	return $link;
 }
 
