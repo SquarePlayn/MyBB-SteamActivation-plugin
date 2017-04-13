@@ -24,7 +24,7 @@ function steam_activation_info() {
         "website"        => "https://clwo.eu",
         "author"        => "Square Play'n",
         "authorsite"    => "http://squareplayn.noip.me",
-        "version"        => "1.0",
+        "version"        => "1.1",
         "guid"             => "",
         "compatibility" => "18*"
     );
@@ -397,7 +397,6 @@ function steam_activation_uninstall() {
 //Activation procedure for plugin
 function steam_activation_activate() {
 	steam_activation_f_debug("Primitive function: activate()");
-	global $mybb, $db, $cache;
 
 	steam_activation_f_debug("Enabeling the setting for the userfield showing in the profiles and postbits according to the settings");
 	steam_activation_f_profilefieldsettings_update();
@@ -484,9 +483,11 @@ function steam_activation_admin_config_settings_change_commit() {
 function steam_activation_f_debug($message) {
 	global $mybb;
 
-	if($mybb->settings["steam_activation_debug"]) {
-		echo("<b>[Steam Activation][".time()."]</b> ".$message."<br>");
-	}
+	if(isset($mybb->settings["steam_activation_debug"])) {
+        if ($mybb->settings["steam_activation_debug"]) {
+            echo("<b>[Steam Activation][" . time()%100 ."]</b>".$message."<br>");
+        }
+    }
 }
 
 //Pre-condition checks before we possibly run any pages
@@ -498,23 +499,23 @@ function steam_activation_f_run_precheck() {
 		steam_activation_f_debug("User is logged in");
 		//Logged in
 
-		if($mybb->user["usergroup"] == $mybb->settings["steam_activation_banned_group"]) {
-			steam_activation_f_debug("User is banned, I'm out!");
-			//User is banned already
+        //Check if the current user should be banned
+        if($mybb->settings["steam_activation_checkuseronglobalstart"]) {
+            steam_activation_f_debug("Usercecking on globalstart enabled, going to check current user");
 
-		} else {
-			steam_activation_f_debug("User is not banned");
+            steam_activation_f_bancheck_currentuser();
+        } else {
+            steam_activation_f_debug("No userchecking on globalstart, continuing");
+        }
 
-			//Check if the current user should be banned
-			if($mybb->settings["steam_activation_checkuseronglobalstart"]) {
-				steam_activation_f_debug("Usercecking on globalstart enabled, going to check current user");
+        if($mybb->user["usergroup"] == $mybb->settings["steam_activation_banned_group"]) {
+            steam_activation_f_debug("User is banned, I'm out!");
+            //User is banned already
 
-				steam_activation_f_bancheck_currentuser();
-			} else {
-				steam_activation_f_debug("No userchecking on globalstart, continuing");
-			}
+        } else {
+            steam_activation_f_debug("User is not banned");
 
-			if(!isset($mybb->user["steam_activation_steamid"]) || 
+            if(!isset($mybb->user["steam_activation_steamid"]) ||
 				$mybb->user["usergroup"] == $mybb->settings["steam_activation_non_activated_group"]) {
 				steam_activation_f_debug("This user is not properly setup, lets run the plugin page");
 				//User not properly setup
@@ -674,7 +675,14 @@ function steam_activation_f_steam_handler() {
 					if(isset($steamCheckInfo["error"])) {
 						steam_activation_f_debug("Stopping since error: ".$steamCheckInfo["error"]." has been thrown");
 						//Error was thrown, ohh oh
-						
+
+                        if($steamCheckInfo["error"] === "blacklisted"){
+                            steam_activation_f_setsteam($steamID);
+                            steam_activation_f_bancheck_user($mybb->user["uid"], $steamID);
+                            header("Location: ".$steamCheckInfo["blacklistlink"]);
+                            steam_activation_f_die();
+                        }
+
 						steam_activation_f_steam_display_page($openID, $steamCheckInfo);
 
 					} else {
@@ -696,7 +704,7 @@ function steam_activation_f_steam_handler() {
 				steam_activation_f_debug("No mode detected, nothing regarding a Steam login found");
 				//No login info yet, display the page
 
-				steam_activation_f_steam_display_page($openID);
+				steam_activation_f_steam_display_page($openID, array());
 			}
 		} else {
 			steam_activation_f_debug("ERROR: Wanted to include openid.php, but it didn't exist");
@@ -839,7 +847,6 @@ function steam_activation_f_replace_shared_codes($page) {
 
 	$page = str_replace("{userid}", $mybb->user["uid"], $page);
 	$page = str_replace("{username}", $mybb->user["username"], $page);
-	$page = str_replace("{userid}", $mybb->user["uid"], $page);
 	$page = str_replace("{logoutlink}", steam_activation_f_get_logoutlink(), $page);
 	$page = str_replace("{requestedpage}", steam_activation_f_get_requestedpage(), $page);
 
@@ -1147,6 +1154,7 @@ function steam_activation_f_bancheck_currentuser() {
 //Check the user with uid if he is allowed according to the custom checks and ban if not
 function steam_activation_f_bancheck_user($checkuid, $checkSteamID) {
 	steam_activation_f_debug("Function: bancheck_user()");
+    global $mybb;
 
 	$banInfo = steam_activation_f_check_uid($checkuid, $checkSteamID);
 
@@ -1154,29 +1162,48 @@ function steam_activation_f_bancheck_user($checkuid, $checkSteamID) {
 		steam_activation_f_debug("<b>An error was thrown: ".$banInfo["error"]."</b>");
 		//An error was thrown. Lets do something about it!
 
-		if(isset($banInfo["banlength"])) {
-			steam_activation_f_debug("Length detected: ".$banInfo["banlength"]);
-			
-			$banlength = $banInfo["banlength"];
-		} else {
-			//Default ban length
-			$banlength = 15780000; //6 Months
+        if($banInfo["error"] === "unban"){
+            steam_activation_f_debug("Plugin told to unban. Doing as you wish!");
+            steam_activation_f_unban($checkuid);
+        } else {
+            steam_activation_f_debug("It's not an unban, so we'll ban.");
+            if($mybb->user["usergroup"] == $mybb->settings["steam_activation_banned_group"]){
+                steam_activation_f_debug("This user is banned. Returning now as if there is no error since we are only supposed to check it user needs unban if he's banned");
+                return;
+            } else {
+                steam_activation_f_debug("This user was not banned, but an error was thrown. Let's ban this fucker!");
+                if(isset($banInfo["banlength"])) {
+                    steam_activation_f_debug("Length detected: ".$banInfo["banlength"]);
 
-			steam_activation_f_debug("No ban length detected, using default: ".$banlength);
-		}
+                    $banlength = $banInfo["banlength"];
+                } else {
+                    //Default ban length
+                    $banlength = 15780000; //6 Months
 
-		if(isset($banInfo["banreason"])) {
-			steam_activation_f_debug("Reason detected: ".$banInfo["banreason"]);
-			
-			$banreason = $banInfo["banreason"];
-		} else {
-			//Default ban length
-			$banreason = "Automatic ban by a custom plugin of the steam_activation plugin. It threw the following error: ".$banInfo["error"].".";
+                    steam_activation_f_debug("No ban length detected, using default: ".$banlength);
+                }
 
-			steam_activation_f_debug("No ban reason detected, using default: ".$banreason);
-		}
+                if(isset($banInfo["banreason"])) {
+                    steam_activation_f_debug("Reason detected: ".$banInfo["banreason"]);
 
-		steam_activation_f_banuser($checkuid, $banlength, $banreason);		
+                    $banreason = $banInfo["banreason"];
+                } else {
+                    //Default ban length
+                    $banreason = "Automatic ban by a custom plugin of the steam_activation plugin. It threw the following error: ".$banInfo["error"].".";
+
+                    steam_activation_f_debug("No ban reason detected, using default: ".$banreason);
+                }
+                steam_activation_f_banuser($checkuid, $banlength, $banreason);
+            }
+        }
+
+        steam_activation_f_debug("Checking if this is a check on a logged in user.");
+        if($mybb->user["uid"] === $checkuid){
+            steam_activation_f_debug("Yes, the logged in user. Refreshing the page since he's been affected");
+            steam_activation_f_refresh();
+        } else {
+            steam_activation_f_debug("Nope, not the logged in user. Not going to refresh.");
+        }
 	} else {
 		steam_activation_f_debug("No error found. ".$checkuid." is all good!");
 		
@@ -1209,27 +1236,29 @@ function steam_activation_f_banuser($uid, $length, $reason) {
 				steam_activation_f_debug("User is already banned, not double-banning");
 
 			} else {
-				steam_activation_f_debug("User not already banned, let's ban this fucker!");
+				steam_activation_f_debug("User not already banned, <b>let's ban this fucker!</b>");
 
 				if($length == -1) {
-					steam_activation_f_debug("Permament ban detected");
+					steam_activation_f_debug("Permanent ban detected");
 					$bantime = "---";
 					$lifted = 0;
 				} else {
 					steam_activation_f_debug("Ban is not a permaban. Building bantime and lifted db-entries now");
-				
 
-					$secperyear = 31536000;
+					$secsperyear = 31536000;
 					$secspermonth = 2630000;
 					$secsperday = 86400;
 
-					$timeconstruct = $length;
-					$years = floor($timeconstruct / $secsperyear);
-					$timeconstruct = $timeconstruct - $years * $secsperyear; 
-					$months = floor($timeconstruct / $secspermonth);
-					$timeconstruct = $timeconstruct - $months * $secspermonth;
-					$days = floor($timeconstruct / $secsperday);
+                    steam_activation_f_debug("Found ".$length." as bantime in minutes");
 
+                    $timeconstruct = $length;
+                    $years = floor($timeconstruct / $secsperyear);
+                    $timeconstruct = $timeconstruct - $years * $secsperyear;
+                    $months = floor($timeconstruct / $secspermonth);
+                    $timeconstruct = $timeconstruct - $months * $secspermonth;
+                    $days = floor($timeconstruct / $secsperday);
+
+                    steam_activation_f_debug("I should ban for: ".$years." years, ".$months." months and ".$days." days.");
 
 					$bantime = $years."-".$months."-".$days;
 
@@ -1257,6 +1286,7 @@ function steam_activation_f_banuser($uid, $length, $reason) {
 			}
 		}
 	}
+	steam_activation_f_refresh();
 }
 
 //Check if the steam openid page is online 
@@ -1316,6 +1346,23 @@ function steam_activation_f_steam_online() {
 	}
 	
 	return $steam_activation_steam_online;
+}
+
+//Unban a user
+function steam_activation_f_unban($uid){
+    steam_activation_f_debug("Fuction: unban()");
+    global $db;
+
+    $baninfo = $db->fetch_array($db->simple_select("banned", "*", "uid=".$uid));
+    $updateduserinfo = array(
+        "usergroup" => $baninfo["oldgroup"],
+        "additionalgroups" => $baninfo["oldadditionalgroups"],
+        "displaygroup" => $baninfo["olddisplaygroup"]
+    );
+    $db->update_query("users", $updateduserinfo, "uid=".$uid);
+    $db->delete_query("banned", "uid=".$uid);
+
+    steam_activation_f_debug("Uid ".$uid." is now unbanned!");
 }
 
 //Update profilefield settings
