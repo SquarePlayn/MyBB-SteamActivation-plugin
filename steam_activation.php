@@ -24,7 +24,7 @@ function steam_activation_info() {
         "website"        => "https://clwo.eu",
         "author"        => "Square Play'n",
         "authorsite"    => "http://squareplayn.noip.me",
-        "version"        => "1.1",
+        "version"        => "1.1.1",
         "guid"             => "",
         "compatibility" => "18*"
     );
@@ -508,50 +508,41 @@ function steam_activation_f_run_precheck() {
             steam_activation_f_debug("No userchecking on globalstart, continuing");
         }
 
-        if($mybb->user["usergroup"] == $mybb->settings["steam_activation_banned_group"]) {
-            steam_activation_f_debug("User is banned, I'm out!");
-            //User is banned already
+        if(!isset($mybb->user["steam_activation_steamid"]) ||
+            $mybb->user["usergroup"] == $mybb->settings["steam_activation_non_activated_group"]) {
+            steam_activation_f_debug("This user is not properly setup, lets run the plugin page");
+            //User not properly setup
 
+            //Check once if the user should already just be activated
+            if(steam_activation_f_should_be_activated()) {
+                steam_activation_f_activate_user();
+                steam_activation_f_debug("I am not dying since the user did already meet the requirements to be activated and has been activated now, so he is allowed to see the page that he requested");
+            } else {
+                steam_activation_f_debug("User should not be activated already, proceeding");
+
+                //Check for allowed pages
+                if(steam_activation_f_get_requestedpage() === steam_activation_f_get_logoutlink()) {
+                    steam_activation_f_debug("This is the exact logout page, I'm out!");
+
+                } else if(steam_activation_f_get_requestedpage() === steam_activation_f_get_postlink()) {
+                    steam_activation_f_debug("This is the post-thread page for the introduction thread. Let's check if this user has verified Steam already");
+                    if(isset($mybb->user["steam_activation_steamid"])) {
+                        steam_activation_f_debug("Steam is set, this guy is allowed to post an introduction, plugin's out!");
+
+                    } else {
+                        steam_activation_f_debug("This guy has not yet verified Steam, what's he doing here? Pulling you over to the Steam login page!");
+
+                        steam_activation_f_run();
+                    }
+                } else {
+                    steam_activation_f_debug("This is not one of the allowed pages (e.g. the logout page). Let's run!");
+
+                    steam_activation_f_run();
+                }
+            }
         } else {
-            steam_activation_f_debug("User is not banned");
-
-            if(!isset($mybb->user["steam_activation_steamid"]) ||
-				$mybb->user["usergroup"] == $mybb->settings["steam_activation_non_activated_group"]) {
-				steam_activation_f_debug("This user is not properly setup, lets run the plugin page");
-				//User not properly setup
-
-				//Check once if the user should already just be activated
-				if(steam_activation_f_should_be_activated()) {
-					steam_activation_f_activate_user();
-					steam_activation_f_debug("I am not dying since the user did already meet the requirements to be activated and has been activated now, so he is allowed to see the page that he requested");
-				} else {
-					steam_activation_f_debug("User should not be activated already, proceeding");
-
-					//Check for allowed pages
-					if(steam_activation_f_get_requestedpage() === steam_activation_f_get_logoutlink()) {
-						steam_activation_f_debug("This is the exact logout page, I'm out!");
-
-					} else if(steam_activation_f_get_requestedpage() === steam_activation_f_get_postlink()) {
-						steam_activation_f_debug("This is the post-thread page for the introduction thread. Let's check if this user has verified Steam already");
-						if(isset($mybb->user["steam_activation_steamid"])) {
-							steam_activation_f_debug("Steam is set, this guy is allowed to post an introduction, plugin's out!");
-
-						} else {
-							steam_activation_f_debug("This guy has not yet verified Steam, what's he doing here? Pulling you over to the Steam login page!");
-
-							steam_activation_f_run();
-						}	
-
-					} else {
-						steam_activation_f_debug("This is not one of the allowed pages (e.g. the logout page). Let's run!");
-
-						steam_activation_f_run();
-					}
-				}
-			} else {
-				steam_activation_f_debug("User already properly setup, plugin done");
-			}
-		}
+            steam_activation_f_debug("User already properly setup, plugin done");
+        }
 	} else {
 		steam_activation_f_debug("User is not logged in, plugin done");
 	}
